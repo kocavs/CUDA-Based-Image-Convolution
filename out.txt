@@ -1,3 +1,0 @@
-C1_checksum: 1.22756e+14, C1_execution_time: 22.225 ms
-C2_checksum: 1.10937e+14, C2_execution_time: 14.427 ms
-C3_checksum: 1.22756e+14, C3_execution_time: 13.022 ms
