@@ -71,39 +71,85 @@ __global__ void convolution_kernel(double* d_I0, double* d_F, double* d_O) {
 }
 
 __global__ void tiling_conv_kernel(double* d_I0, double* d_F, double* d_O){
+    // int k = blockIdx.z;
+    // int x = blockIdx.x * blockDim.x + threadIdx.x;
+    // int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    // __shared__ double input_tile[C][32 + FH - 1][32 + FW - 1]; 
+
+    // // Load input tiles into shared memory
+    // for (int c = 0; c < C; c++) {
+    //     int input_x = x - P + threadIdx.x;
+    //     int input_y = y - P + threadIdx.y;
+
+    //     if (input_x >= 0 && input_x < (W + 2 * P) && input_y >= 0 && input_y < (H + 2 * P)) {
+    //         input_tile[c][threadIdx.y][threadIdx.x]= d_I0[c * ((H + 2 * P) * (W + 2 * P)) + input_y * (W + 2 * P) + input_x];
+    //     } else {
+    //         input_tile[c][threadIdx.y][threadIdx.x] = 0;
+    //     }
+    // }
+
+    // __syncthreads();
+
+    // // Perform the convolution operation on the tiles
+    // if (x < W && y < H) {
+        
+    //     double sum = 0;
+    //     for (int c = 0; c < C; c++) {
+    //         for (int i = 0; i < FH; i++) {
+    //             for (int j = 0; j < FW; j++) {
+    //                 sum += d_F[k * C * FW * FH + c * FW * FH + FW * i + j] * input_tile[c][threadIdx.y + i][threadIdx.x + j];
+    //             }
+    //         }
+    //     }
+    //     d_O[(k * H * W) + x * H + y] = sum;
+    // }
+
+    extern __shared__ double shared_I0[];
+
+    // Calculate the size of the shared memory block needed
+    const int sharedMemWidth = blockDim.x + FW - 1;
+    const int sharedMemHeight = blockDim.y + FH - 1;
+
+    // Calculate the position in shared memory
     int k = blockIdx.z;
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-    __shared__ double input_tile[C][32 + FH - 1][32 + FW - 1]; 
-
-    // Load input tiles into shared memory
+     // Load input data into shared memory
     for (int c = 0; c < C; c++) {
-        int input_x = x - P + threadIdx.x;
-        int input_y = y - P + threadIdx.y;
-
-        if (input_x >= 0 && input_x < (W + 2 * P) && input_y >= 0 && input_y < (H + 2 * P)) {
-            input_tile[c][threadIdx.y][threadIdx.x]= d_I0[c * ((H + 2 * P) * (W + 2 * P)) + input_y * (W + 2 * P) + input_x];
-        } else {
-            input_tile[c][threadIdx.y][threadIdx.x] = 0;
+        for (int i = threadIdx.x; i < sharedMemWidth; i += blockDim.x) {
+            for (int j = threadIdx.y; j < sharedMemHeight; j += blockDim.y) {
+                int global_x = blockIdx.x * blockDim.x + i - FW / 2;
+                int global_y = blockIdx.y * blockDim.y + j - FH / 2;
+                global_x = max(0, min(global_x, W + 2 * P - 1));
+                global_y = max(0, min(global_y, H + 2 * P - 1));
+                int shared_index = c * sharedMemHeight * sharedMemWidth + j * sharedMemWidth + i;
+                int global_index = c * ((H + 2 * P) * (W + 2 * P)) + global_y * (W + 2 * P) + global_x;
+                shared_I0[shared_index] = d_I0[global_index];
+            }
         }
     }
 
     __syncthreads();
 
-    // Perform the convolution operation on the tiles
-    if (x < W && y < H) {
-        
-        double sum = 0;
-        for (int c = 0; c < C; c++) {
-            for (int i = 0; i < FH; i++) {
-                for (int j = 0; j < FW; j++) {
-                    sum += d_F[k * C * FW * FH + c * FW * FH + FW * i + j] * input_tile[c][threadIdx.y + i][threadIdx.x + j];
-                }
+  // Perform convolution using shared memory
+  if (x < W && y < H) {
+    double sum = 0;
+    for (int c = 0; c < C; c++) {
+        for (int i = 0; i < FH; i++) {
+            for (int j = 0; j < FW; j++) {
+                int shared_x = threadIdx.x + i;
+                int shared_y = threadIdx.y + j;
+                int shared_index = c * sharedMemHeight * sharedMemWidth + shared_y * sharedMemWidth + shared_x;
+                int filter_index = k * C * FH * FW + c * FH * FW + i * FW + j;
+                sum += d_F[filter_index] * shared_I0[shared_index];
             }
         }
-        d_O[(k * H * W) + x * H + y] = sum;
     }
+    int output_index = (k * H * W) + x * H + y;
+    d_O[output_index] = sum;
+  }
 }
 
 int main() {
@@ -197,10 +243,14 @@ int main() {
     blockDim = dim3(32, 32);
     gridDim = dim3((W + blockDim.x - 1) / blockDim.x, (H + blockDim.y - 1) / blockDim.y, K);
 
+    const int sharedMemWidth = blockDim.x + FW - 1;
+    const int sharedMemHeight = blockDim.y + FH - 1;
+    int sharedMemSize = sharedMemWidth * sharedMemHeight * C * sizeof(double);
+
     //Begin to run the kernel
     start_time = clock();
     
-    tiling_conv_kernel<<<gridDim, blockDim>>>(d_I0, d_F, d_O);
+    tiling_conv_kernel<<<gridDim, blockDim, sharedMemSize>>>(d_I0, d_F, d_O);
     cudaDeviceSynchronize();
     
     end_time = clock();
