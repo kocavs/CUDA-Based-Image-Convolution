@@ -28,7 +28,7 @@ This project implements image convolution using CUDA, demonstrating three distin
 
 To compile the project, run the following command in the terminal:
 ```
-nvcc -o image_convolution main.cu -lcudnn
+nvcc -o image_convolution c1.cu -lcudnn
 ```
 Execute the compiled program with:
 ```
