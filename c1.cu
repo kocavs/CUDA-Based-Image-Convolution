@@ -166,7 +166,7 @@ int main() {
     // Set all elements of I0 to zero
     memset(h_I0, 0, I0_size * sizeof(double));
 
-     // Generate the elements of the I0, with padding
+     // Generate the elements of the I0, without padding
     for (int c = 0; c < C; c++) {
         for (int x = 0; x < H; x++) {
             for (int y = 0; y < W; y++) {
