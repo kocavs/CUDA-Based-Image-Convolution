@@ -120,8 +120,8 @@ __global__ void tiling_conv_kernel(double* d_I0, double* d_F, double* d_O){
     for (int c = 0; c < C; c++) {
         for (int i = threadIdx.x; i < sharedMemWidth; i += blockDim.x) {
             for (int j = threadIdx.y; j < sharedMemHeight; j += blockDim.y) {
-                int global_x = blockIdx.x * blockDim.x + i - FW / 2;
-                int global_y = blockIdx.y * blockDim.y + j - FH / 2;
+                int global_x = blockIdx.x * blockDim.x + i;
+                int global_y = blockIdx.y * blockDim.y + j;
                 global_x = max(0, min(global_x, W + 2 * P - 1));
                 global_y = max(0, min(global_y, H + 2 * P - 1));
                 int shared_index = c * sharedMemHeight * sharedMemWidth + j * sharedMemWidth + i;
